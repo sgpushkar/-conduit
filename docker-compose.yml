@@ -1,0 +1,30 @@
+# Infra only (dev). The API, worker and frontend run on the host; the worker needs the host's Docker for sandboxed tests.
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: conduit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: conduit
+    volumes: [pgdata:/var/lib/postgresql/data]
+    ports: ["127.0.0.1:5432:5432"]   # direct, used for migrations
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U conduit"], interval: 5s, retries: 10 }
+  pgbouncer:
+    image: edoburu/pgbouncer
+    depends_on: { postgres: { condition: service_healthy } }
+    environment:
+      DB_HOST: postgres
+      DB_USER: conduit
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: conduit
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "200"
+      DEFAULT_POOL_SIZE: "20"
+    ports: ["127.0.0.1:6432:5432"]   # app traffic goes here
+  redis:
+    image: redis:7
+    command: ["redis-server", "--maxmemory-policy", "noeviction", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    volumes: [redisdata:/data]
+    ports: ["127.0.0.1:6379:6379"]
+volumes: { pgdata: {}, redisdata: {} }
